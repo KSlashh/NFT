@@ -11,34 +11,27 @@ contract ERC721MintWithSig is ERC721Enumerable, AccessControl {
     using Strings for uint256;
 
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
-    uint256 public upperLimit;
-    uint256 public lowerLimit;
     uint256 public deadline;
+    address public owner; // just for opensea
 
     // Optional mapping for token URIs
     mapping (uint256 => string) private _tokenURIs;
 
-    constructor(string memory name, string memory symbol, uint256 _lowerLimit, uint256 _upperLimit, uint256 _deadline)
+    constructor(string memory name, string memory symbol, uint256 _deadline, address _owner)
     ERC721(name, symbol)
     {
         _setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
-        upperLimit = _upperLimit;
-        lowerLimit = _lowerLimit;
         deadline = _deadline;
-    }
-
-    modifier withinRange(uint256 tokenId) {
-        require(
-            tokenId>=lowerLimit && tokenId<=upperLimit, 
-            string(
-                abi.encodePacked(
-                    "Invalid token id, only between ",Strings.toString(lowerLimit)," and ",Strings.toString(upperLimit)," is permitted")));
-        _;
+        owner = _owner; 
     }
 
     modifier withinDeadline() {
         require(deadline == 0 || block.timestamp <= deadline, "Claim entrance is closed!");
         _;
+    }
+
+    function setOwner(address _owner) public onlyRole(DEFAULT_ADMIN_ROLE) {
+        owner = _owner;
     }
 
     /**
@@ -62,11 +55,6 @@ contract ERC721MintWithSig is ERC721Enumerable, AccessControl {
         return super.tokenURI(tokenId);
     }
 
-    function setClaimRange(uint256 _lowerLimit, uint256 _upperLimit) onlyRole(DEFAULT_ADMIN_ROLE) external {
-        upperLimit = _upperLimit;
-        lowerLimit = _lowerLimit;
-    }
-
     function setDeadline(uint256 _deadline) onlyRole(DEFAULT_ADMIN_ROLE) external {
         deadline = _deadline;
     }
@@ -76,11 +64,19 @@ contract ERC721MintWithSig is ERC721Enumerable, AccessControl {
     }
 
     function claim(address account, uint256 tokenId, string memory uri, bytes calldata signature)
-    external withinDeadline withinRange(tokenId) 
+    public withinDeadline 
     {
         require(_verify(_hash(account, tokenId, uri), signature), "Invalid signature");
         _safeMint(account, tokenId);
         _setTokenURI(tokenId, uri);
+    }
+
+    function claimBatch(address[] memory accounts, uint256[] memory tokenIds, string[] memory uris, bytes[] calldata signatures)
+    external withinDeadline 
+    {   
+        for (uint i = 0; i < accounts.length; i++) {
+            claim(accounts[i], tokenIds[i], uris[i], signatures[i]);
+        }
     }
 
     /**
